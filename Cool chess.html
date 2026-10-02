@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шахматы</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;user-select:none}
+body{background:#1a1a2e;display:flex;justify-content:center;align-items:center;min-height:100vh;font-family:Arial,sans-serif}
+#menu{display:flex;flex-direction:column;align-items:center;gap:30px}
+#menu h1{color:#eee;font-size:48px;text-shadow:0 0 20px #e94560}
+#menu button{padding:20px 60px;font-size:28px;background:#e94560;color:#fff;border:none;border-radius:12px;cursor:pointer;transition:.3s}
+#menu button:hover{background:#ff6b81;transform:scale(1.05)}
+#sideMenu{display:none;flex-direction:column;align-items:center;gap:30px}
+#sideMenu h2{color:#eee;font-size:36px}
+#sideMenu button{padding:20px 60px;font-size:28px;background:#0f3460;color:#fff;border:none;border-radius:12px;cursor:pointer;transition:.3s}
+#sideMenu button:hover{background:#16213e;transform:scale(1.05)}
+#game{display:none;flex-direction:column;align-items:center;gap:20px}
+#board{display:grid;grid-template-columns:repeat(8,70px);grid-template-rows:repeat(8,70px);border:4px solid #e94560;border-radius:8px;overflow:hidden}
+.cell{display:flex;align-items:center;justify-content:center;font-size:48px;cursor:pointer;transition:.15s}
+.white{background:#f0d9b5}
+.black{background:#b58863}
+.selected{background:#7b9e5a}
+.legal{box-shadow:inset 0 0 0 4px #e94560}
+#status{color:#eee;font-size:24px;padding:10px 30px;background:#16213e;border-radius:8px}
+#backBtn{padding:12px 30px;font-size:18px;background:#e94560;color:#fff;border:none;border-radius:8px;cursor:pointer}
+</style>
+</head>
+<body>
+<div id="menu">
+<h1>ШАХМАТЫ</h1>
+<button onclick="showSideMenu()">Игра с ботом</button>
+</div>
+<div id="sideMenu">
+<h2>Выбери сторону</h2>
+<button onclick="startGame('white')">Белые</button>
+<button onclick="startGame('black')">Чёрные</button>
+</div>
+<div id="game">
+<div id="board"></div>
+<div id="status">Твой ход</div>
+<button id="backBtn" onclick="backToMenu()">В меню</button>
+</div>
+<script>
+const PIECE_VALUES = {p:1,n:3,b:3,r:5,q:9,k:99999999999999999999999999};
+const SYMBOLS = {K:'♔',Q:'♕',R:'♖',B:'♗',N:'♘',P:'♙',k:'♚',q:'♛',r:'♜',b:'♝',n:'♞',p:'♟'};
+let board = [];
+let selected = null;
+let playerSide = 'white';
+let botSide = 'black';
+let turn = 'white';
+let gameOver = false;
+let lastMove = null;
+
+function initBoard(){
+board = [
+['r','n','b','q','k','b','n','r'],
+['p','p','p','p','p','p','p','p'],
+[null,null,null,null,null,null,null,null],
+[null,null,null,null,null,null,null,null],
+[null,null,null,null,null,null,null,null],
+[null,null,null,null,null,null,null,null],
+['P','P','P','P','P','P','P','P'],
+['R','N','B','Q','K','B','N','R']
+];
+}
+
+function showSideMenu(){
+document.getElementById('menu').style.display='none';
+document.getElementById('sideMenu').style.display='flex';
+}
+
+function startGame(side){
+playerSide = side;
+botSide = side === 'white' ? 'black' : 'white';
+turn = 'white';
+gameOver = false;
+selected = null;
+lastMove = null;
+initBoard();
+document.getElementById('sideMenu').style.display='none';
+document.getElementById('game').style.display='flex';
+render();
+updateStatus();
+if(botSide === 'white'){setTimeout(botMove,300);}
+}
+
+function backToMenu(){
+document.getElementById('game').style.display='none';
+document.getElementById('menu').style.display='flex';
+}
+
+function isWhite(piece){return piece === piece.toUpperCase();}
+function isBlack(piece){return piece === piece.toLowerCase();}
+function isOwnPiece(piece){return playerSide === 'white' ? isWhite(piece) : isBlack(piece);}
+function isEnemyPiece(piece){return playerSide === 'white' ? isBlack(piece) : isWhite(piece);}
+
+function render(){
+const boardEl = document.getElementById('board');
+boardEl.innerHTML = '';
+for(let r = 0; r < 8; r++){
+for(let c = 0; c < 8; c++){
+const cell = document.createElement('div');
+cell.className = 'cell ' + ((r + c) % 2 === 0 ? 'white' : 'black');
+cell.dataset.row = r;
+cell.dataset.col = c;
+const piece = board[r][c];
+if(piece) cell.textContent = SYMBOLS[piece];
+if(selected && selected.row === r && selected.col === c) cell.classList.add('selected');
+if(lastMove && ((lastMove.fromR === r && lastMove.fromC === c) || (lastMove.toR === r && lastMove.toC === c))) cell.classList.add('legal');
+cell.addEventListener('click', () => onCellClick(r, c));
+boardEl.appendChild(cell);
+}
+}
+}
+
+function updateStatus(){
+const st = document.getElementById('status');
+if(gameOver){st.textContent = 'Игра окончена';return;}
+if(turn === playerSide){st.textContent = 'Твой ход';}
+else{st.textContent = 'Ход бота...';}
+}
+
+function onCellClick(r, c){
+if(gameOver) return;
+if(turn !== playerSide) return;
+const piece = board[r][c];
+if(!selected){
+if(piece && isOwnPiece(piece)){selected = {row:r, col:c};render();}
+return;
+}
+if(piece && isOwnPiece(piece)){selected = {row:r, col:c};render();return;}
+const fromR = selected.row, fromC = selected.col;
+if(isLegalMove(board, fromR, fromC, r, c)){
+board[r][c] = board[fromR][fromC];
+board[fromR][fromC] = null;
+lastMove = {fromR, fromC, toR:r, toC:c};
+selected = null;
+turn = botSide;
+render();
+updateStatus();
+if(isCheckmate(board, botSide)){gameOver = true;updateStatus();return;}
+if(isCheckmate(board, playerSide)){gameOver = true;updateStatus();return;}
+setTimeout(botMove, 300);
+}else{
+selected = null;
+render();
+}
+}
+
+function isLegalMove(b, fromR, fromC, toR, toC){
+const piece = b[fromR][fromC];
+if(!piece) return false;
+const target = b[toR][toC];
+if(target && (isWhite(target) === isWhite(piece))) return false;
+const type = piece.toLowerCase();
+const dr = toR - fromR;
+const dc = toC - fromC;
+const absDr = Math.abs(dr);
+const absDc = Math.abs(dc);
+if(type === 'p'){
+const dir = isWhite(piece) ? -1 : 1;
+if(dc === 0 && dr === dir && !target) return true;
+if(dc === 0 && dr === 2 * dir && !target && (isWhite(piece) ? fromR === 6 : fromR === 1)){
+if(!b[fromR + dir][fromC]) return true;
+}
+if(absDc === 1 && dr === dir && target) return true;
+return false;
+}
+if(type === 'n') return (absDr === 2 && absDc === 1) || (absDr === 1 && absDc === 2);
+if(type === 'b'){if(absDr !== absDc) return false;return isPathClear(b, fromR, fromC, toR, toC);}
+if(type === 'r'){if(dr !== 0 && dc !== 0) return false;return isPathClear(b, fromR, fromC, toR, toC);}
+if(type === 'q'){if(dr !== 0 && dc !== 0 && absDr !== absDc) return false;return isPathClear(b, fromR, fromC, toR, toC);}
+if(type === 'k') return absDr <= 1 && absDc <= 1;
+return false;
+}
+
+function isPathClear(b, fromR, fromC, toR, toC){
+const dr = Math.sign(toR - fromR);
+const dc = Math.sign(toC - fromC);
+let r = fromR + dr, c = fromC + dc;
+while(r !== toR || c !== toC){
+if(b[r][c]) return false;
+r += dr; c += dc;
+}
+return true;
+}
+
+function findKing(b, color){
+for(let r = 0; r < 8; r++)for(let c = 0; c < 8; c++){
+const p = b[r][c];
+if(p && p.toLowerCase() === 'k' && (color === 'white' ? isWhite(p) : isBlack(p))) return {r, c};
+}
+return null;
+}
+
+function isAttacked(b, r, c, byColor){
+for(let rr = 0; rr < 8; rr++)for(let cc = 0; cc < 8; cc++){
+const p = b[rr][cc];
+if(!p) continue;
+const isWhitePiece = isWhite(p);
+if((byColor === 'white' && !isWhitePiece) || (byColor === 'black' && isWhitePiece)) continue;
+const type = p.toLowerCase();
+const dr = r - rr, dc = c - cc;
+const absDr = Math.abs(dr), absDc = Math.abs(dc);
+if(type === 'p'){
+const dir = isWhitePiece ? -1 : 1;
+if(dr === dir && absDc === 1) return true;
+}
+if(type === 'n'){if((absDr === 2 && absDc === 1) || (absDr === 1 && absDc === 2)) return true;}
+if(type === 'b'){if(absDr === absDc && isPathClear(b, rr, cc, r, c)) return true;}
+if(type === 'r'){if((dr === 0 || dc === 0) && isPathClear(b, rr, cc, r, c)) return true;}
+if(type === 'q'){if((dr === 0 || dc === 0 || absDr === absDc) && isPathClear(b, rr, cc, r, c)) return true;}
+if(type === 'k'){if(absDr <= 1 && absDc <= 1) return true;}
+}
+return false;
+}
+
+function isInCheck(b, color){
+const king = findKing(b, color);
+if(!king) return true;
+const enemy = color === 'white' ? 'black' : 'white';
+return isAttacked(b, king.r, king.c, enemy);
+}
+
+function isCheckmate(b, color){
+if(!isInCheck(b, color)) return false;
+return !hasAnyLegalMove(b, color);
+}
+
+function hasAnyLegalMove(b, color){
+for(let r = 0; r < 8; r++)for(let c = 0; c < 8; c++){
+const p = b[r][c];
+if(!p) continue;
+if(color === 'white' && !isWhite(p)) continue;
+if(color === 'black' && !isBlack(p)) continue;
+for(let tr = 0; tr < 8; tr++)for(let tc = 0; tc < 8; tc++){
+if(isLegalMove(b, r, c, tr, tc)){
+const copy = b.map(row => row.slice());
+copy[tr][tc] = copy[r][c];
+copy[r][c] = null;
+if(!isInCheck(copy, color)) return true;
+}
+}
+}
+return false;
+}
+
+function evaluate(b, forColor){
+if(isCheckmate(b, 'white')) return forColor === 'white' ? 99999999999999999999999999 : -99999999999999999999999999;
+if(isCheckmate(b, 'black')) return forColor === 'black' ? 99999999999999999999999999 : -99999999999999999999999999;
+let score = 0;
+for(let r = 0; r < 8; r++)for(let c = 0; c < 8; c++){
+const p = b[r][c];
+if(!p) continue;
+const val = PIECE_VALUES[p.toLowerCase()];
+if(isWhite(p)) score += forColor === 'white' ? val : -val;
+else score += forColor === 'black' ? val : -val;
+}
+return score;
+}
+
+function getAllMoves(b, color){
+const moves = [];
+for(let r = 0; r < 8; r++)for(let c = 0; c < 8; c++){
+const p = b[r][c];
+if(!p) continue;
+if(color === 'white' && !isWhite(p)) continue;
+if(color === 'black' && !isBlack(p)) continue;
+for(let tr = 0; tr < 8; tr++)for(let tc = 0; tc < 8; tc++){
+if(isLegalMove(b, r, c, tr, tc)){
+const copy = b.map(row => row.slice());
+copy[tr][tc] = copy[r][c];
+copy[r][c] = null;
+if(!isInCheck(copy, color)) moves.push({fromR:r, fromC:c, toR:tr, toC:tc});
+}
+}
+}
+return moves;
+}
+
+function minimax(b, depth, alpha, beta, maximizing, forColor){
+if(depth === 0) return evaluate(b, forColor);
+const color = maximizing ? forColor : (forColor === 'white' ? 'black' : 'white');
+const moves = getAllMoves(b, color);
+if(moves.length === 0){
+if(isInCheck(b, color)) return maximizing ? -99999999999999999999999999 : 99999999999999999999999999;
+return 0;
+}
+if(maximizing){
+let maxEval = -Infinity;
+for(const m of moves){
+const copy = b.map(row => row.slice());
+copy[m.toR][m.toC] = copy[m.fromR][m.fromC];
+copy[m.fromR][m.fromC] = null;
+const ev = minimax(copy, depth - 1, alpha, beta, false, forColor);
+maxEval = Math.max(maxEval, ev);
+alpha = Math.max(alpha, ev);
+if(beta <= alpha) break;
+}
+return maxEval;
+}else{
+let minEval = Infinity;
+for(const m of moves){
+const copy = b.map(row => row.slice());
+copy[m.toR][m.toC] = copy[m.fromR][m.fromC];
+copy[m.fromR][m.fromC] = null;
+const ev = minimax(copy, depth - 1, alpha, beta, true, forColor);
+minEval = Math.min(minEval, ev);
+beta = Math.min(beta, ev);
+if(beta <= alpha) break;
+}
+return minEval;
+}
+}
+
+function botMove(){
+if(gameOver) return;
+const moves = getAllMoves(board, botSide);
+if(moves.length === 0){gameOver = true;updateStatus();return;}
+let bestMove = null;
+let bestEval = -Infinity;
+for(const m of moves){
+const copy = board.map(row => row.slice());
+copy[m.toR][m.toC] = copy[m.fromR][m.fromC];
+copy[m.fromR][m.fromC] = null;
+const ev = minimax(copy, 1, -Infinity, Infinity, false, botSide);
+if(ev > bestEval){bestEval = ev;bestMove = m;}
+}
+if(bestMove){
+board[bestMove.toR][bestMove.toC] = board[bestMove.fromR][bestMove.fromC];
+board[bestMove.fromR][bestMove.fromC] = null;
+lastMove = bestMove;
+turn = playerSide;
+render();
+updateStatus();
+if(isCheckmate(board, playerSide)){gameOver = true;updateStatus();}
+if(isCheckmate(board, botSide)){gameOver = true;updateStatus();}
+}
+}
+
+initBoard();
+</script>
+</body>
+</html>
